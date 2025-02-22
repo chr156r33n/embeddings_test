@@ -42,8 +42,8 @@ if ground_truth_file and st.button("Compute Similarity"):
     true_labels = ground_truth["Match"].tolist()
     
     for _, row in ground_truth.iterrows():
-        k1, k2 = row["Keyword1"], row["Keyword2"]
-        result_row = [k1, k2]
+        k1, k2, match = row["Keyword1"], row["Keyword2"], row["Match"]
+        result_row = [k1, k2, match]
         sbert_score, openai_score = None, None
         if use_sbert:
             sbert_score = compute_similarity(get_embedding_sbert(k1), get_embedding_sbert(k2))
@@ -68,7 +68,7 @@ if ground_truth_file and st.button("Compute Similarity"):
         best_thresholds[model] = best_threshold
     
     # Dataframe Output
-    columns = ["Keyword 1", "Keyword 2"]
+    columns = ["Keyword 1", "Keyword 2", "Ground Truth Match"]
     if use_sbert:
         columns.append("SBERT Similarity")
     if use_openai:
