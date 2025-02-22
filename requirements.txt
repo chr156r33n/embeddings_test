@@ -1,0 +1,8 @@
+streamlit
+numpy
+pandas
+sentence-transformers
+fastext
+openai
+cohere
+os
