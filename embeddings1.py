@@ -31,31 +31,37 @@ ground_truth_file = st.file_uploader("Upload Ground Truth CSV (Keyword1, Keyword
 
 # Model Selection
 use_sbert = st.checkbox("Use SBERT", True)
-use_openai = st.checkbox("Use OpenAI", True)
+use_openai = st.checkbox("Use OpenAI", True) and bool(api_key)
 
 if ground_truth_file and st.button("Compute Similarity"):
     ground_truth = pd.read_csv(ground_truth_file)
     results = []
     best_thresholds = {}
-    model_scores = {"sbert": [], "openai": []}
+    model_scores = {}
     true_labels = ground_truth["Match"].tolist()
+    
+    if use_sbert:
+        model_scores["sbert"] = []
+    if use_openai:
+        model_scores["openai"] = []
     
     for _, row in ground_truth.iterrows():
         k1, k2, match = row["Keyword1"], row["Keyword2"], row["Match"]
         result_row = [k1, k2, match]
-        sbert_score, openai_score = None, None
+        
         if use_sbert:
             sbert_score = compute_similarity(get_embedding_sbert(k1), get_embedding_sbert(k2))
             result_row.append(sbert_score)
             model_scores["sbert"].append(sbert_score)
-        if use_openai and api_key:
+        
+        if use_openai:
             openai_score = compute_similarity(get_embedding_openai(k1, api_key), get_embedding_openai(k2, api_key))
             result_row.append(openai_score)
             model_scores["openai"].append(openai_score)
+        
         results.append(result_row)
     
     # Find best threshold for each model using percentile-based thresholding
-    classification_results = []
     for model in model_scores:
         score_array = np.array(model_scores[model])
         lower_bound = np.percentile(score_array, 10)  # 10th percentile as lower bound
@@ -79,12 +85,13 @@ if ground_truth_file and st.button("Compute Similarity"):
         columns.append("OpenAI Similarity")
         columns.append("OpenAI Classification Error")
     
-    df = pd.DataFrame(results, columns=columns[:-2])  # Exclude error columns initially
+    df = pd.DataFrame(results, columns=columns[:len(results[0])])  # Dynamically adjust columns
     
     # Compute classification errors
     if use_sbert:
         df["SBERT Classification Error"] = df.apply(lambda row: "False Positive" if row["SBERT Similarity"] >= best_thresholds["sbert"] and row["Ground Truth Match"] == 0 else "False Negative" if row["SBERT Similarity"] < best_thresholds["sbert"] and row["Ground Truth Match"] == 1 else "Correct", axis=1)
-    if use_openai:
+    
+    if use_openai and "OpenAI Similarity" in df.columns:
         df["OpenAI Classification Error"] = df.apply(lambda row: "False Positive" if row["OpenAI Similarity"] >= best_thresholds["openai"] and row["Ground Truth Match"] == 0 else "False Negative" if row["OpenAI Similarity"] < best_thresholds["openai"] and row["Ground Truth Match"] == 1 else "Correct", axis=1)
     
     st.dataframe(df)
