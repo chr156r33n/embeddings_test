@@ -38,10 +38,16 @@ if st.button("Compute Similarity"):
     for k1 in keyword_list_1:
         for k2 in keyword_list_2:
             row = [k1, k2]
+            sbert_score, openai_score, percent_diff = None, None, None
             if use_sbert:
-                row.append(compute_similarity(get_embedding_sbert(k1), get_embedding_sbert(k2)))
+                sbert_score = compute_similarity(get_embedding_sbert(k1), get_embedding_sbert(k2))
+                row.append(sbert_score)
             if use_openai and api_key:
-                row.append(compute_similarity(get_embedding_openai(k1, api_key), get_embedding_openai(k2, api_key)))
+                openai_score = compute_similarity(get_embedding_openai(k1, api_key), get_embedding_openai(k2, api_key))
+                row.append(openai_score)
+            if sbert_score is not None and openai_score is not None:
+                percent_diff = abs(sbert_score - openai_score) / ((sbert_score + openai_score) / 2) * 100
+                row.append(percent_diff)
             results.append(row)
     
     # Dataframe Output
@@ -50,6 +56,8 @@ if st.button("Compute Similarity"):
         columns.append("SBERT Similarity")
     if use_openai and api_key:
         columns.append("OpenAI Similarity")
+    if use_sbert and use_openai:
+        columns.append("% Difference")
     
     df = pd.DataFrame(results, columns=columns)
     st.dataframe(df)
