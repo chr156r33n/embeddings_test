@@ -2,7 +2,6 @@ streamlit
 numpy
 pandas
 sentence-transformers
-fastext
 openai
+fasttext-wheel
 cohere
-os
