@@ -55,6 +55,7 @@ if ground_truth_file and st.button("Compute Similarity"):
         results.append(result_row)
     
     # Find best threshold for each model using percentile-based thresholding
+    classification_results = []
     for model in model_scores:
         score_array = np.array(model_scores[model])
         lower_bound = np.percentile(score_array, 10)  # 10th percentile as lower bound
@@ -73,10 +74,19 @@ if ground_truth_file and st.button("Compute Similarity"):
     columns = ["Keyword 1", "Keyword 2", "Ground Truth Match"]
     if use_sbert:
         columns.append("SBERT Similarity")
+        columns.append("SBERT Classification Error")
     if use_openai:
         columns.append("OpenAI Similarity")
+        columns.append("OpenAI Classification Error")
     
-    df = pd.DataFrame(results, columns=columns)
+    df = pd.DataFrame(results, columns=columns[:-2])  # Exclude error columns initially
+    
+    # Compute classification errors
+    if use_sbert:
+        df["SBERT Classification Error"] = df.apply(lambda row: "False Positive" if row["SBERT Similarity"] >= best_thresholds["sbert"] and row["Ground Truth Match"] == 0 else "False Negative" if row["SBERT Similarity"] < best_thresholds["sbert"] and row["Ground Truth Match"] == 1 else "Correct", axis=1)
+    if use_openai:
+        df["OpenAI Classification Error"] = df.apply(lambda row: "False Positive" if row["OpenAI Similarity"] >= best_thresholds["openai"] and row["Ground Truth Match"] == 0 else "False Negative" if row["OpenAI Similarity"] < best_thresholds["openai"] and row["Ground Truth Match"] == 1 else "Correct", axis=1)
+    
     st.dataframe(df)
     
     # Display best thresholds
