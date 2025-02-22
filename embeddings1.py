@@ -37,7 +37,6 @@ if ground_truth_file and st.button("Compute Similarity"):
     ground_truth = pd.read_csv(ground_truth_file)
     results = []
     best_thresholds = {}
-    thresholds = np.linspace(0, 1, 101)  # 0.00 to 1.00 in steps of 0.01
     model_scores = {"sbert": [], "openai": []}
     true_labels = ground_truth["Match"].tolist()
     
@@ -55,11 +54,14 @@ if ground_truth_file and st.button("Compute Similarity"):
             model_scores["openai"].append(openai_score)
         results.append(result_row)
     
-    # Find best threshold for each model
+    # Find best threshold for each model using percentile-based thresholding
     for model in model_scores:
+        score_array = np.array(model_scores[model])
+        lower_bound = np.percentile(score_array, 10)  # 10th percentile as lower bound
+        upper_bound = np.percentile(score_array, 90)  # 90th percentile as upper bound
         best_f1 = 0
-        best_threshold = 0
-        for threshold in thresholds:
+        best_threshold = lower_bound
+        for threshold in np.linspace(lower_bound, upper_bound, 50):  # 50 steps within range
             predictions = [1 if score >= threshold else 0 for score in model_scores[model]]
             precision, recall, f1, _ = precision_recall_fscore_support(true_labels, predictions, average='binary')
             if f1 > best_f1:
@@ -79,7 +81,7 @@ if ground_truth_file and st.button("Compute Similarity"):
     
     # Display best thresholds
     if best_thresholds:
-        st.write("### Recommended Thresholds")
+        st.write("### Recommended Thresholds (Percentile-Based)")
         for model, threshold in best_thresholds.items():
             st.write(f"{model.upper()} Best Threshold: {threshold:.2f}")
     
