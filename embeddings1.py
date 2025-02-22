@@ -53,25 +53,17 @@ if ground_truth_file and st.button("Compute Similarity"):
     
     for _, row in ground_truth.iterrows():
         k1, k2, match = row["Keyword1"], row["Keyword2"], row["Match"]
-        result_row = [k1, k2, match]
+        result_row = [k1, k2, match, None, None]
         
         if use_sbert:
             sbert_score = compute_similarity(get_embedding_sbert(k1), get_embedding_sbert(k2))
-            result_row.append(sbert_score)
+            result_row[3] = sbert_score
             model_scores["sbert"].append(sbert_score)
-        else:
-            result_row.append(None)
         
         if use_openai:
             openai_score = compute_similarity(get_embedding_openai(k1, api_key), get_embedding_openai(k2, api_key))
-            if openai_score is not None:
-                result_row.append(openai_score)
-                model_scores["openai"].append(openai_score)
-            else:
-                result_row.append(None)
-                model_scores["openai"].append(None)
-        else:
-            result_row.append(None)
+            result_row[4] = openai_score
+            model_scores["openai"].append(openai_score if openai_score is not None else 0)
         
         results.append(result_row)
     
@@ -93,15 +85,8 @@ if ground_truth_file and st.button("Compute Similarity"):
                 best_thresholds[model] = best_threshold
     
     # Dataframe Output
-    columns = ["Keyword 1", "Keyword 2", "Ground Truth Match"]
-    if use_sbert:
-        columns.append("SBERT Similarity")
-        columns.append("SBERT Classification Error")
-    if use_openai:
-        columns.append("OpenAI Similarity")
-        columns.append("OpenAI Classification Error")
-    
-    df = pd.DataFrame(results, columns=columns[:len(results[0])])  # Adjust columns dynamically
+    columns = ["Keyword 1", "Keyword 2", "Ground Truth Match", "SBERT Similarity", "OpenAI Similarity"]
+    df = pd.DataFrame(results, columns=columns)
     
     # Compute classification errors
     if use_sbert and "SBERT Similarity" in df.columns:
