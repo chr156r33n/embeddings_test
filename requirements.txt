@@ -2,7 +2,5 @@ streamlit
 numpy
 pandas
 sentence-transformers
-openai
-fasttext-wheel
-cohere
 torch
+openai
