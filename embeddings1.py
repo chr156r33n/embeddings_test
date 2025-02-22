@@ -27,52 +27,45 @@ st.title("Keyword Similarity Comparison")
 
 # User Inputs
 api_key = st.text_input("OpenAI API Key", type="password")
-keyword_list_1 = st.text_area("Keyword List 1 (one per line)").split("\n")
-keyword_list_2 = st.text_area("Keyword List 2 (one per line)").split("\n")
 ground_truth_file = st.file_uploader("Upload Ground Truth CSV (Keyword1, Keyword2, Match 1/0)", type=["csv"])
 
 # Model Selection
 use_sbert = st.checkbox("Use SBERT", True)
 use_openai = st.checkbox("Use OpenAI", True)
 
-if st.button("Compute Similarity"):
+if ground_truth_file and st.button("Compute Similarity"):
+    ground_truth = pd.read_csv(ground_truth_file)
     results = []
-    ground_truth = None
-    if ground_truth_file:
-        ground_truth = pd.read_csv(ground_truth_file)
-
     best_thresholds = {}
     thresholds = np.linspace(0, 1, 101)  # 0.00 to 1.00 in steps of 0.01
     model_scores = {"sbert": [], "openai": []}
-    true_labels = []
+    true_labels = ground_truth["Match"].tolist()
     
-    for k1 in keyword_list_1:
-        for k2 in keyword_list_2:
-            row = [k1, k2]
-            sbert_score, openai_score = None, None
-            if use_sbert:
-                sbert_score = compute_similarity(get_embedding_sbert(k1), get_embedding_sbert(k2))
-                row.append(sbert_score)
-                model_scores["sbert"].append(sbert_score)
-            if use_openai and api_key:
-                openai_score = compute_similarity(get_embedding_openai(k1, api_key), get_embedding_openai(k2, api_key))
-                row.append(openai_score)
-                model_scores["openai"].append(openai_score)
-            results.append(row)
+    for _, row in ground_truth.iterrows():
+        k1, k2 = row["Keyword1"], row["Keyword2"]
+        result_row = [k1, k2]
+        sbert_score, openai_score = None, None
+        if use_sbert:
+            sbert_score = compute_similarity(get_embedding_sbert(k1), get_embedding_sbert(k2))
+            result_row.append(sbert_score)
+            model_scores["sbert"].append(sbert_score)
+        if use_openai and api_key:
+            openai_score = compute_similarity(get_embedding_openai(k1, api_key), get_embedding_openai(k2, api_key))
+            result_row.append(openai_score)
+            model_scores["openai"].append(openai_score)
+        results.append(result_row)
     
-    # If ground truth exists, find the best threshold for each model
-    if ground_truth is not None:
-        true_labels = ground_truth["Match"].tolist()
-        for model in model_scores:
-            best_f1 = 0
-            best_threshold = 0
-            for threshold in thresholds:
-                predictions = [1 if score >= threshold else 0 for score in model_scores[model]]
-                precision, recall, f1, _ = precision_recall_fscore_support(true_labels, predictions, average='binary')
-                if f1 > best_f1:
-                    best_f1 = f1
-                    best_threshold = threshold
-            best_thresholds[model] = best_threshold
+    # Find best threshold for each model
+    for model in model_scores:
+        best_f1 = 0
+        best_threshold = 0
+        for threshold in thresholds:
+            predictions = [1 if score >= threshold else 0 for score in model_scores[model]]
+            precision, recall, f1, _ = precision_recall_fscore_support(true_labels, predictions, average='binary')
+            if f1 > best_f1:
+                best_f1 = f1
+                best_threshold = threshold
+        best_thresholds[model] = best_threshold
     
     # Dataframe Output
     columns = ["Keyword 1", "Keyword 2"]
