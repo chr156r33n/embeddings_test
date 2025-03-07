@@ -30,6 +30,7 @@ def compute_similarity(vec1, vec2):
     return np.dot(vec1, vec2) / (np.linalg.norm(vec1) * np.linalg.norm(vec2))
 
 st.title("Keyword Similarity Comparison")
+st.markdown("By Chris Green [www.chris-green.net](https://www.chris-green.net/). [LinkedIn](https://www.linkedin.com/in/chrisgreenseo/). [BlueSky](https://bsky.app/profile/chris-green.net)")
 
 # User Inputs
 api_key = st.text_input("OpenAI API Key", type="password")
