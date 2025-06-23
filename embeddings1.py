@@ -16,7 +16,7 @@ def get_embedding_openai(text, api_key):
     try:
         openai.api_key = api_key
         resp = openai.embeddings.create(
-            model="text-embedding-ada-002",
+            model="text-embedding-3-small",
             input=[text]
         )
         return np.array(resp.data[0].embedding)
