@@ -3,24 +3,23 @@ import numpy as np
 import pandas as pd
 from sentence_transformers import SentenceTransformer
 import openai
-import os
 from sklearn.metrics import precision_recall_fscore_support
 
-# Load SBERT
+# Load SBERT (raw embeddings)
 sbert_model = SentenceTransformer('all-MiniLM-L6-v2')
 
 def get_embedding_sbert(text):
-    return sbert_model.encode(text, normalize_embeddings=True)
+    # normalize_embeddings=False → return raw vectors
+    return sbert_model.encode(text, normalize_embeddings=False)
 
 def get_embedding_openai(text, api_key):
     try:
         openai.api_key = api_key
-        response = openai.embeddings.create(
+        resp = openai.embeddings.create(
             model="text-embedding-ada-002",
             input=[text]
         )
-        # Note: Ada embeddings are not normalized
-        return np.array(response.data[0].embedding)
+        return np.array(resp.data[0].embedding)
     except Exception as e:
         st.error(f"OpenAI API error: {e}")
         return None
@@ -35,45 +34,45 @@ def compute_dot(vec1, vec2):
         return None
     return np.dot(vec1, vec2)
 
-st.title("Keyword Similarity Comparison (Cosine vs. Dot Product)")
-st.markdown("By Chris Green [www.chris-green.net](https://www.chris-green.net/)")
+st.title("Keyword Similarity: Cosine vs. Dot Product")
+st.markdown("By Chris Green — [Website](https://www.chris-green.net/)")
 
-# Inputs
+# User inputs
 api_key = st.text_input("OpenAI API Key", type="password")
-ground_truth_file = st.file_uploader("Upload Ground Truth CSV (Keyword1, Keyword2, Match 1/0)", type=["csv"])
+gt_file = st.file_uploader("Upload Ground Truth CSV (Keyword1, Keyword2, Match 1/0)", type=["csv"])
 
 use_sbert   = st.checkbox("Use SBERT", True)
-use_openai = st.checkbox("Use OpenAI", True) and bool(api_key)
+use_openai  = st.checkbox("Use OpenAI", True) and bool(api_key)
 
-if ground_truth_file and st.button("Compute Similarity"):
-    ground_truth = pd.read_csv(ground_truth_file)
-    true_labels = ground_truth["Match"].tolist()
+if gt_file and st.button("Compute Similarity"):
+    # Load and normalize columns
+    df_gt = pd.read_csv(gt_file)
+    df_gt.columns = [c.strip().lower() for c in df_gt.columns]
+    required = {"keyword1","keyword2","match"}
+    if not required.issubset(set(df_gt.columns)):
+        st.error(f"Missing columns: {', '.join(required - set(df_gt.columns))}")
+        st.stop()
 
-    # Prepare storage
+    true_labels = df_gt["match"].tolist()
     results = []
     scores = {
-        "sbert_cosine": [],
-        "sbert_dot": [],
-        "openai_cosine": [],
-        "openai_dot": []
+        "sbert_cosine": [], "sbert_dot": [],
+        "openai_cosine": [], "openai_dot": []
     }
 
-    for _, row in ground_truth.iterrows():
-        k1, k2, match = row["Keyword1"], row["Keyword2"], row["Match"]
+    # Compute embeddings & similarities
+    for _, row in df_gt.iterrows():
+        k1, k2, match = row["keyword1"], row["keyword2"], row["match"]
         out = {"Keyword 1": k1, "Keyword 2": k2, "Ground Truth Match": match}
 
-        # SBERT
         if use_sbert:
             e1 = get_embedding_sbert(k1)
             e2 = get_embedding_sbert(k2)
-            cos = compute_cosine(e1, e2)
-            dot = compute_dot(e1, e2)
-            out["SBERT Cosine"] = cos
-            out["SBERT Dot"]    = dot
-            scores["sbert_cosine"].append(cos)
-            scores["sbert_dot"].append(dot)
+            out["SBERT Cosine"] = compute_cosine(e1, e2)
+            out["SBERT Dot"]    = compute_dot(e1, e2)
+            scores["sbert_cosine"].append(out["SBERT Cosine"])
+            scores["sbert_dot"].append(out["SBERT Dot"])
 
-        # OpenAI
         if use_openai:
             e1 = get_embedding_openai(k1, api_key)
             e2 = get_embedding_openai(k2, api_key)
@@ -86,51 +85,47 @@ if ground_truth_file and st.button("Compute Similarity"):
 
         results.append(out)
 
-    # Find best thresholds
+    # Find best thresholds per metric
     best_thresholds = {}
     for metric, vals in scores.items():
-        # filter None
         arr = np.array([v for v in vals if v is not None])
         if arr.size == 0:
             continue
-        lb = np.percentile(arr, 10)
-        ub = np.percentile(arr, 90)
-        best_f1 = 0
-        best_t  = lb
+        lb, ub = np.percentile(arr, 10), np.percentile(arr, 90)
+        best_f1, best_t = 0, lb
         for t in np.linspace(lb, ub, 50):
             preds = [1 if v >= t else 0 for v in vals]
             p, r, f1, _ = precision_recall_fscore_support(true_labels, preds, average='binary')
             if f1 > best_f1:
-                best_f1 = f1
-                best_t  = t
+                best_f1, best_t = f1, t
         best_thresholds[metric] = best_t
 
-    # Build DataFrame
-    df = pd.DataFrame(results)
+    # Build output DataFrame
+    df_out = pd.DataFrame(results)
 
-    # Classification Errors for each metric
+    # Classification errors
     for model in ["SBERT", "OpenAI"]:
         for mtype in ["Cosine", "Dot"]:
-            col_score = f"{model} {mtype}"
+            col = f"{model} {mtype}"
             thr = best_thresholds.get(f"{model.lower()}_{mtype.lower()}", 0)
-            err_col = f"{model} {mtype} Error"
-            if col_score in df.columns:
-                df[err_col] = df.apply(
-                    lambda r: 
-                        "False Positive" if r[col_score] is not None and r[col_score] >= thr and r["Ground Truth Match"] == 0
-                        else "False Negative" if r[col_score] is not None and r[col_score] <  thr and r["Ground Truth Match"] == 1
-                        else "Correct",
+            err_col = f"{col} Error"
+            if col in df_out.columns:
+                df_out[err_col] = df_out.apply(
+                    lambda r: "False Positive"
+                              if r[col] is not None and r[col] >= thr and r["Ground Truth Match"] == 0
+                              else "False Negative"
+                              if r[col] is not None and r[col] <  thr and r["Ground Truth Match"] == 1
+                              else "Correct",
                     axis=1
                 )
 
-    # Show table
-    st.dataframe(df)
+    st.dataframe(df_out)
 
-    # Display thresholds
+    # Show thresholds
     st.write("### Recommended Thresholds")
-    for k,v in best_thresholds.items():
+    for k, v in best_thresholds.items():
         st.write(f"- **{k.replace('_',' ').title()}**: {v:.4f}")
 
-    # CSV Download
-    csv = df.to_csv(index=False).encode('utf-8')
+    # CSV download
+    csv = df_out.to_csv(index=False).encode('utf-8')
     st.download_button("Download CSV", csv, "similarity_results.csv", "text/csv")
